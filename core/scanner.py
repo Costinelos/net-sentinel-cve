@@ -20,11 +20,20 @@ class PortScanner:
         s.settimeout(self.time_out)
         try:
             s.connect((self.target_ip, port))
-            s.send(b"HEAD / HTTP/1.0\r\n\r\n")
-            raspuns = s.recv(1024).decode("utf-8", errors="ignore")
+            try:
+                raw_data = s.recv(1024)
+            except socket.timeout:
+                raw_data = None
+            if not raw_data:
+                s.sendall(b"HEAD / HTTP/1.0\r\nHost: " + self.target_ip.encode() + b"\r\n\r\n")
+                raw_data = s.recv(1024)
             s.close()
-            if raspuns:
-                return raspuns.split("\n")[0]
+            if raw_data:
+                decoded = raw_data.decode("utf-8", errors="ignore").strip()
+                for line in decoded.splitlines():
+                    cleaned_line = line.strip()
+                    if cleaned_line:
+                        return cleaned_line
             return "Unknown service"
         except Exception:
             return "Unknown service"
