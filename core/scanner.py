@@ -1,7 +1,10 @@
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import socket
 
+
 class PortScanner:
-    def __init__(self, target_ip, time_out = 1.5):
+
+    def __init__(self, target_ip, time_out=1.5):
         self.target_ip = target_ip
         self.time_out = time_out
 
@@ -25,7 +28,11 @@ class PortScanner:
             except socket.timeout:
                 raw_data = None
             if not raw_data:
-                s.sendall(b"HEAD / HTTP/1.0\r\nHost: " + self.target_ip.encode() + b"\r\n\r\n")
+                s.sendall(
+                    b"HEAD / HTTP/1.0\r\nHost: "
+                    + self.target_ip.encode()
+                    + b"\r\n\r\n"
+                )
                 raw_data = s.recv(1024)
             s.close()
             if raw_data:
@@ -37,3 +44,15 @@ class PortScanner:
             return "Unknown service"
         except Exception:
             return "Unknown service"
+
+    def scan_ports_concurrent(self, ports, max_threads=30):
+        open_ports = []
+        with ThreadPoolExecutor(max_workers=max_threads) as executor:
+            future_to_port = {
+                executor.submit(self.scan_port, port): port for port in ports
+            }
+            for future in as_completed(future_to_port):
+                port = future_to_port[future]
+                if future.result():
+                    open_ports.append(port)
+        return sorted(open_ports)
