@@ -16,14 +16,15 @@ class VulnerabilityScannerGUI:
     def __init__(self, root):
         self.root = root
         self.root.title("VulnScope | Vulnerability & Port Scanner")
-        self.root.geometry("960x580")
-        self.root.minsize(800, 450)
+        self.root.geometry("1000x680")
+        self.root.minsize(850, 500)
 
         self.db = DatabaseManager()
         self.db.init_db()
 
         self._build_inputs()
         self._build_table()
+        self._build_detail_box()
         self._build_status_bar()
 
     def _build_inputs(self):
@@ -32,10 +33,10 @@ class VulnerabilityScannerGUI:
         )
         input_frame.pack(fill="x", padx=10, pady=5)
 
-        ttk.Label(input_frame, text="Target IP:").grid(
+        ttk.Label(input_frame, text="Target IP / Host:").grid(
             row=0, column=0, padx=5, pady=5, sticky="w"
         )
-        self.entry_ip = ttk.Entry(input_frame, width=16)
+        self.entry_ip = ttk.Entry(input_frame, width=20)
         self.entry_ip.insert(0, "127.0.0.1")
         self.entry_ip.grid(row=0, column=1, padx=5, pady=5)
 
@@ -57,11 +58,13 @@ class VulnerabilityScannerGUI:
         self.btn_history.grid(row=0, column=5, padx=5, pady=5)
 
     def _build_table(self):
-        table_frame = ttk.Frame(self.root)
-        table_frame.pack(fill="both", expand=True, padx=10, pady=5)
+        table_container = ttk.Frame(self.root)
+        table_container.pack(fill="both", expand=True, padx=10, pady=5)
 
         columns = ("port", "service", "cve_id", "cvss", "summary")
-        self.tree = ttk.Treeview(table_frame, columns=columns, show="headings")
+        self.tree = ttk.Treeview(
+            table_container, columns=columns, show="headings"
+        )
 
         self.tree.heading("port", text="Port")
         self.tree.heading("service", text="Service Banner")
@@ -70,22 +73,65 @@ class VulnerabilityScannerGUI:
         self.tree.heading("summary", text="Vulnerability Summary")
 
         self.tree.column("port", width=70, anchor="center")
-        self.tree.column("service", width=150)
-        self.tree.column("cve_id", width=120, anchor="center")
+        self.tree.column("service", width=180)
+        self.tree.column("cve_id", width=130, anchor="center")
         self.tree.column("cvss", width=60, anchor="center")
-        self.tree.column("summary", width=520)
+        self.tree.column("summary", width=600)
 
-        # Severity visual highlighting
         self.tree.tag_configure("critical", background="#ffd6d6")
         self.tree.tag_configure("medium", background="#fff3cd")
 
         scroll_y = ttk.Scrollbar(
-            table_frame, orient="vertical", command=self.tree.yview
+            table_container, orient="vertical", command=self.tree.yview
         )
-        self.tree.configure(yscrollcommand=scroll_y.set)
+        scroll_x = ttk.Scrollbar(
+            table_container, orient="horizontal", command=self.tree.xview
+        )
+        self.tree.configure(
+            yscrollcommand=scroll_y.set, xscrollcommand=scroll_x.set
+        )
 
-        self.tree.pack(side="left", fill="both", expand=True)
-        scroll_y.pack(side="right", fill="y")
+        self.tree.grid(row=0, column=0, sticky="nsew")
+        scroll_y.grid(row=0, column=1, sticky="ns")
+        scroll_x.grid(row=1, column=0, sticky="ew")
+
+        table_container.rowconfigure(0, weight=1)
+        table_container.columnconfigure(0, weight=1)
+
+        self.tree.bind("<<TreeviewSelect>>", self._on_row_select)
+
+    def _build_detail_box(self):
+        detail_frame = ttk.LabelFrame(
+            self.root, text=" Selected Vulnerability Details ", padding=5
+        )
+        detail_frame.pack(fill="x", padx=10, pady=5)
+
+        self.detail_text = tk.Text(
+            detail_frame, height=5, wrap="word", relief="flat"
+        )
+        self.detail_text.pack(fill="both", expand=True)
+        self.detail_text.insert(
+            "1.0",
+            "Click on any row in the table above to view full description.",
+        )
+        self.detail_text.config(state="disabled")
+
+    def _on_row_select(self, event):
+        selected_item = self.tree.focus()
+        if not selected_item:
+            return
+        values = self.tree.item(selected_item, "values")
+        if values and len(values) >= 5:
+            full_summary = values[4]
+            cve_id = values[2]
+            cvss = values[3]
+
+            self.detail_text.config(state="normal")
+            self.detail_text.delete("1.0", "end")
+            self.detail_text.insert(
+                "end", f"[{cve_id}] (CVSS: {cvss})\n\n{full_summary}"
+            )
+            self.detail_text.config(state="disabled")
 
     def _build_status_bar(self):
         self.status_var = tk.StringVar(value="Ready.")
@@ -133,6 +179,13 @@ class VulnerabilityScannerGUI:
         for row in self.tree.get_children():
             self.tree.delete(row)
 
+        self.detail_text.config(state="normal")
+        self.detail_text.delete("1.0", "end")
+        self.detail_text.insert(
+            "1.0", "Scanning in progress... Select a result when completed."
+        )
+        self.detail_text.config(state="disabled")
+
         thread = threading.Thread(
             target=self._run_scan, args=(ip, ports), daemon=True
         )
@@ -142,7 +195,7 @@ class VulnerabilityScannerGUI:
         self.status_var.set(f"Scanning {len(ports)} port(s) against {ip}...")
         scan_id = self.db.save_scan(ip)
 
-        scanner = PortScanner(target_ip=ip)
+        scanner = PortScanner(target=ip)
         cve_engine = CVEEngine()
         findings = []
 

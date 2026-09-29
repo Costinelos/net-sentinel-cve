@@ -10,7 +10,6 @@ class CVEEngine:
     def clean_service_name(self, banner):
         if not banner or banner == "Unknown service":
             return None
-        # Transforma "Apache/2.4.49" in "Apache 2.4.49"
         cleaned = banner.split("\n")[0].replace("/", " ").strip()
         parts = cleaned.split()
         if len(parts) >= 2:
@@ -41,7 +40,6 @@ class CVEEngine:
                     cve_data = item.get("cve", {})
                     cve_id = cve_data.get("id", "N/A")
 
-                    # Extragere descriere in engleza
                     descriptions = cve_data.get("descriptions", [])
                     summary = "No description available"
                     for desc in descriptions:
@@ -49,7 +47,6 @@ class CVEEngine:
                             summary = desc.get("value", "")
                             break
 
-                    # Extragere scor CVSS v3.1 / v3.0 / v2.0
                     metrics = cve_data.get("metrics", {})
                     cvss = 0.0
                     if "cvssMetricV31" in metrics:
@@ -68,11 +65,7 @@ class CVEEngine:
                     results.append(
                         {
                             "cve_id": cve_id,
-                            "summary": (
-                                (summary[:100] + "...")
-                                if len(summary) > 100
-                                else summary
-                            ),
+                            "summary": summary,
                             "cvss": float(cvss),
                         }
                     )
