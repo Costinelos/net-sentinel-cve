@@ -1,12 +1,30 @@
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import socket
+from urllib.parse import urlparse
 
 
 class PortScanner:
 
-    def __init__(self, target_ip, time_out=1.5):
-        self.target_ip = target_ip
+    def __init__(self, target, time_out=1.5):
+        self.raw_target = target
         self.time_out = time_out
+        self.target_ip = self._resolve_target(target)
+
+    def _resolve_target(self, target):
+        target = target.strip()
+        if "://" in target:
+            parsed = urlparse(target)
+            target = parsed.hostname or target
+        elif "/" in target:
+            target = target.split("/")[0]
+
+        if ":" in target:
+            target = target.split(":")[0]
+
+        try:
+            return socket.gethostbyname(target)
+        except socket.gaierror:
+            return target
 
     def scan_port(self, port):
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -27,20 +45,26 @@ class PortScanner:
                 raw_data = s.recv(1024)
             except socket.timeout:
                 raw_data = None
+
             if not raw_data:
-                s.sendall(
-                    b"HEAD / HTTP/1.0\r\nHost: "
-                    + self.target_ip.encode()
-                    + b"\r\n\r\n"
+                request = (
+                    f"HEAD / HTTP/1.1\r\nHost: {self.target_ip}\r\nUser-Agent:"
+                    " VulnScope\r\nConnection: close\r\n\r\n"
                 )
+                s.sendall(request.encode())
                 raw_data = s.recv(1024)
             s.close()
+
             if raw_data:
                 decoded = raw_data.decode("utf-8", errors="ignore").strip()
                 for line in decoded.splitlines():
-                    cleaned_line = line.strip()
-                    if cleaned_line:
-                        return cleaned_line
+                    if line.lower().startswith("server:"):
+                        return line.split(":", 1)[1].strip()
+
+                first_line = decoded.splitlines()[0].strip()
+                if not first_line.startswith("HTTP/"):
+                    return first_line
+
             return "Unknown service"
         except Exception:
             return "Unknown service"
